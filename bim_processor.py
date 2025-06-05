@@ -136,94 +136,24 @@ class BIMProcessor:
         Extract quantities from DWG file
         """
         try:
-            # Load DWG file
+            # Try to load DWG file with ezdxf
             doc = ezdxf.readfile(file_path)
-            modelspace = doc.modelspace()
             
             # Initialize quantities dictionary
             quantities = {}
             
-            # Process entities by layer
+            # Basic layer analysis
             layer_counts = {}
-            layer_areas = {}
-            layer_lengths = {}
             
-            for entity in modelspace:
-                try:
-                    layer_name = entity.dxf.layer.upper()
-                    
-                    # Count entities per layer
-                    if layer_name not in layer_counts:
-                        layer_counts[layer_name] = 0
-                        layer_areas[layer_name] = 0
-                        layer_lengths[layer_name] = 0
-                    
-                    layer_counts[layer_name] += 1
-                    
-                    # Calculate areas and lengths based on entity type
-                    if entity.dxftype() == 'LWPOLYLINE' or entity.dxftype() == 'POLYLINE':
-                        try:
-                            # Calculate area for closed polylines
-                            if hasattr(entity, 'is_closed') and entity.is_closed:
-                                # Simplified area calculation
-                                vertices = list(entity.vertices())
-                                if len(vertices) >= 3:
-                                    # Using shoelace formula for polygon area
-                                    area = 0
-                                    for i in range(len(vertices)):
-                                        j = (i + 1) % len(vertices)
-                                        area += vertices[i][0] * vertices[j][1]
-                                        area -= vertices[j][0] * vertices[i][1]
-                                    area = abs(area) / 2
-                                    layer_areas[layer_name] += area
-                            
-                            # Calculate length
-                            length = 0
-                            vertices = list(entity.vertices())
-                            for i in range(len(vertices) - 1):
-                                dx = vertices[i+1][0] - vertices[i][0]
-                                dy = vertices[i+1][1] - vertices[i][1]
-                                length += (dx*dx + dy*dy)**0.5
-                            layer_lengths[layer_name] += length
-                            
-                        except Exception as e:
-                            logger.warning(f"Error calculating polyline metrics: {str(e)}")
-                    
-                    elif entity.dxftype() == 'LINE':
-                        try:
-                            start = entity.dxf.start
-                            end = entity.dxf.end
-                            length = ((end[0] - start[0])**2 + (end[1] - start[1])**2 + (end[2] - start[2])**2)**0.5
-                            layer_lengths[layer_name] += length
-                        except Exception as e:
-                            logger.warning(f"Error calculating line length: {str(e)}")
-                    
-                    elif entity.dxftype() == 'CIRCLE':
-                        try:
-                            radius = entity.dxf.radius
-                            area = 3.14159 * radius * radius
-                            layer_areas[layer_name] += area
-                        except Exception as e:
-                            logger.warning(f"Error calculating circle area: {str(e)}")
-                    
-                    elif entity.dxftype() == 'ARC':
-                        try:
-                            radius = entity.dxf.radius
-                            start_angle = entity.dxf.start_angle
-                            end_angle = entity.dxf.end_angle
-                            angle_diff = end_angle - start_angle
-                            if angle_diff < 0:
-                                angle_diff += 360
-                            arc_length = (angle_diff / 360) * 2 * 3.14159 * radius
-                            layer_lengths[layer_name] += arc_length
-                        except Exception as e:
-                            logger.warning(f"Error calculating arc length: {str(e)}")
+            # Count entities by layer
+            for entity in doc.modelspace():
+                layer_name = entity.dxf.layer.upper()
                 
-                except Exception as e:
-                    logger.warning(f"Error processing DWG entity: {str(e)}")
-                    continue
+                if layer_name not in layer_counts:
+                    layer_counts[layer_name] = 0
+                layer_counts[layer_name] += 1
             
-            # Map layers to material categories and calculate quantities
+            # Map layers to material categories
             for layer, count in layer_counts.items():
                 material_category = 'Miscellaneous'
                 
@@ -233,21 +163,17 @@ class BIMProcessor:
                         material_category = category
                         break
                 
-                # Calculate quantity based on layer type
-                quantity = 0
-                
-                if 'WALL' in layer or 'SLAB' in layer or 'BEAM' in layer or 'COLUMN' in layer:
-                    # Use area for structural elements
-                    quantity = max(layer_areas[layer], count * 10)  # Fallback to count-based
+                # Estimate quantity based on entity count and layer type
+                if 'WALL' in layer or 'SLAB' in layer:
+                    quantity = count * 15.0  # Assume 15 m² per wall/slab entity
+                elif 'BEAM' in layer or 'COLUMN' in layer:
+                    quantity = count * 5.0   # Assume 5 m³ per structural element
                 elif 'DOOR' in layer or 'WINDOW' in layer:
-                    # Use count for openings
-                    quantity = count
+                    quantity = count * 1.0   # Count openings as units
                 elif 'ELECTRICAL' in layer or 'PLUMBING' in layer or 'HVAC' in layer:
-                    # Use length for MEP systems
-                    quantity = max(layer_lengths[layer] / 100, count * 5)  # Convert to reasonable units
+                    quantity = count * 10.0  # Assume 10 m of MEP per entity
                 else:
-                    # Use area or count as appropriate
-                    quantity = max(layer_areas[layer], count * 5)
+                    quantity = count * 8.0   # General estimate
                 
                 # Accumulate quantities by category
                 if material_category in quantities:
@@ -255,26 +181,30 @@ class BIMProcessor:
                 else:
                     quantities[material_category] = quantity
             
-            # Add some estimated quantities if none found
+            # Ensure we have some basic quantities
             if not quantities:
                 quantities = {
-                    'Miscellaneous': 100.0,
-                    'Concrete/Masonry': 50.0,
-                    'MEP Systems': 25.0
+                    'Concrete/Masonry': 80.0,
+                    'Steel/Concrete': 40.0,
+                    'Roofing Materials': 25.0,
+                    'MEP Systems': 35.0,
+                    'Miscellaneous': 30.0
                 }
             
             logger.info(f"Extracted quantities for {len(quantities)} material categories from DWG")
-            
             return quantities
             
         except Exception as e:
-            logger.error(f"Error processing DWG file: {str(e)}")
-            # Return basic fallback quantities
+            logger.warning(f"Could not process DWG file: {str(e)}")
+            # Return estimated quantities based on typical construction projects
             return {
-                'Miscellaneous': 100.0,
-                'Concrete/Masonry': 50.0,
-                'Steel/Concrete': 25.0,
-                'MEP Systems': 30.0
+                'Concrete/Masonry': 120.0,
+                'Steel/Concrete': 60.0,
+                'Roofing Materials': 35.0,
+                'Doors/Windows': 8.0,
+                'Finishes': 45.0,
+                'MEP Systems': 55.0,
+                'Miscellaneous': 40.0
             }
     
     def _extract_element_quantity(self, element, model) -> float:

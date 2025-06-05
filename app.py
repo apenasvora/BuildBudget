@@ -203,10 +203,25 @@ def show_bim_upload():
                         status_text.text("Saving BIM file...")
                         progress_bar.progress(20)
                         
-                        # Save file temporarily
-                        temp_path = f"temp_{uploaded_file.name}"
-                        with open(temp_path, "wb") as f:
-                            f.write(uploaded_file.getbuffer())
+                        # Create temp directory if it doesn't exist
+                        import tempfile
+                        temp_dir = "temp_files"
+                        
+                        # Use system temp directory as fallback
+                        try:
+                            os.makedirs(temp_dir, exist_ok=True)
+                            # Save file temporarily with proper path handling
+                            safe_filename = uploaded_file.name.replace(" ", "_").replace("-", "_")
+                            temp_path = os.path.join(temp_dir, f"temp_{safe_filename}")
+                            
+                            with open(temp_path, "wb") as f:
+                                f.write(uploaded_file.getbuffer())
+                                
+                        except (PermissionError, OSError):
+                            # Fallback to system temp directory
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+                                tmp_file.write(uploaded_file.getbuffer())
+                                temp_path = tmp_file.name
                         
                         # Step 2: Process BIM model
                         status_text.text("Processing BIM model...")

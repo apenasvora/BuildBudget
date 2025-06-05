@@ -1,0 +1,22 @@
+`[Errno 13] Permission denied` is the operating-system way of saying *“I can’t open or create that file right now.”*
+In your case the Python (or C++) code that’s processing the BIM model tried to touch the temporary DWG file **temp\_residential-building-2307202.dwg** and the OS refused.
+
+### The usual culprits
+
+| Likely cause                                                                                                                                    | What to check / do                                                                                                                                                                              |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Wrong file-system permissions** – the file or its parent folder isn’t writable/readable by your user                                          | • On Linux/macOS: `ls -l` the path, then `chmod`/`chown` as needed.<br>• On Windows: right-click → *Properties* → *Security* tab, or run the script from an elevated Command Prompt/PowerShell. |
+| **File is already open or locked** – another process (e.g. AutoCAD, Revit, your own script in a previous run) is holding an exclusive lock      | • Close the application or kill the stray process.<br>• On Windows, `handle.exe filename` (Sysinternals) shows who’s locking it.<br>• On Linux, `lsof filename`.                                |
+| **Path inside a read-only location** – e.g. system temp dir mounted read-only, Docker container volume not writable, network drive with RO flag | • Try writing to a known writable dir (`/tmp`, `%TEMP%`, or project root).<br>• If in Docker, mount the volume with `:rw`.                                                                      |
+| **Antivirus or EDR interception** – security software blocking DWG writes                                                                       | • Temporarily disable or whitelist the process/path.                                                                                                                                            |
+| **File name collision** – file already exists and is read-only, or the code is trying to overwrite it without the proper flags                  | • Delete the stale file or open with the correct mode (`'wb'` for overwrite, `'ab'` for append).                                                                                                |
+
+### Quick triage checklist
+
+1. **Re-run with elevated privileges** (or `sudo`) just once → if it works, it’s a permission issue.
+2. **Change the temp directory**: point your code to `./tmp/` inside the project and try again.
+3. **Ensure you close files**: if you create the temp DWG earlier in the script, wrap it in a `with open(...)` block so it’s released before the next step.
+4. **Check locks**: use `lsof`/`handle.exe` to see if another process owns the file.
+5. **Inspect antivirus logs**: they often flag DWG writes as risky.
+
+Fix whichever step surfaces the problem and the BIM-processing routine should proceed without the permission error.
