@@ -177,9 +177,9 @@ def show_bim_upload():
     st.header("📤 BIM Model Upload & Processing")
     
     uploaded_file = st.file_uploader(
-        "Upload BIM Model (.IFC file)",
-        type=['ifc'],
-        help="Upload your IFC BIM model for automatic quantity extraction"
+        "Upload BIM Model (.IFC or .DWG file)",
+        type=['ifc', 'dwg'],
+        help="Upload your IFC or DWG BIM model for automatic quantity extraction"
     )
     
     if uploaded_file is not None:

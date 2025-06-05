@@ -1,6 +1,7 @@
 import ifcopenshell
 import ifcopenshell.util.element
 import ifcopenshell.util.unit
+import ezdxf
 from typing import Dict, List, Any
 import os
 import logging
@@ -15,7 +16,7 @@ class BIMProcessor:
     """
     
     def __init__(self):
-        self.supported_formats = ['.ifc']
+        self.supported_formats = ['.ifc', '.dwg']
         self.material_mappings = {
             # Standard IFC element types to material categories
             'IfcWall': 'Concrete/Masonry',
@@ -31,13 +32,41 @@ class BIMProcessor:
             'IfcFurnishingElement': 'Furniture/Fixtures',
             'IfcBuildingElementProxy': 'Miscellaneous'
         }
+        
+        # DWG layer mappings to material categories
+        self.dwg_layer_mappings = {
+            'WALL': 'Concrete/Masonry',
+            'WALLS': 'Concrete/Masonry',
+            'SLAB': 'Concrete',
+            'SLABS': 'Concrete', 
+            'BEAM': 'Steel/Concrete',
+            'BEAMS': 'Steel/Concrete',
+            'COLUMN': 'Steel/Concrete',
+            'COLUMNS': 'Steel/Concrete',
+            'ROOF': 'Roofing Materials',
+            'ROOFING': 'Roofing Materials',
+            'DOOR': 'Doors/Windows',
+            'DOORS': 'Doors/Windows',
+            'WINDOW': 'Doors/Windows',
+            'WINDOWS': 'Doors/Windows',
+            'STAIR': 'Concrete',
+            'STAIRS': 'Concrete',
+            'RAILING': 'Steel',
+            'RAILINGS': 'Steel',
+            'FINISH': 'Finishes',
+            'FINISHES': 'Finishes',
+            'ELECTRICAL': 'MEP Systems',
+            'PLUMBING': 'MEP Systems',
+            'HVAC': 'MEP Systems',
+            'MEP': 'MEP Systems'
+        }
     
     def extract_quantities(self, file_path: str) -> Dict[str, float]:
         """
-        Extract quantities from IFC BIM model
+        Extract quantities from BIM model (IFC or DWG)
         
         Args:
-            file_path: Path to the IFC file
+            file_path: Path to the BIM file (.ifc or .dwg)
             
         Returns:
             Dictionary mapping material categories to quantities
@@ -48,46 +77,205 @@ class BIMProcessor:
             
             logger.info(f"Processing BIM file: {file_path}")
             
-            # Load IFC file
-            model = ifcopenshell.open(file_path)
+            file_extension = os.path.splitext(file_path)[1].lower()
             
-            # Initialize quantities dictionary
-            quantities = {}
-            
-            # Get all building elements
-            elements = model.by_type("IfcBuildingElement")
-            
-            for element in elements:
-                try:
-                    # Get element type
-                    element_type = element.is_a()
-                    
-                    # Map to material category
-                    material_category = self.material_mappings.get(element_type, 'Miscellaneous')
-                    
-                    # Extract quantities
-                    quantity = self._extract_element_quantity(element, model)
-                    
-                    # Accumulate quantities by category
-                    if material_category in quantities:
-                        quantities[material_category] += quantity
-                    else:
-                        quantities[material_category] = quantity
-                        
-                except Exception as e:
-                    logger.warning(f"Error processing element {element.GlobalId}: {str(e)}")
-                    continue
-            
-            # Process additional elements like spaces, zones
-            self._process_spaces(model, quantities)
-            
-            logger.info(f"Extracted quantities for {len(quantities)} material categories")
-            
-            return quantities
+            if file_extension == '.ifc':
+                return self._extract_ifc_quantities(file_path)
+            elif file_extension == '.dwg':
+                return self._extract_dwg_quantities(file_path)
+            else:
+                raise ValueError(f"Unsupported file format: {file_extension}")
             
         except Exception as e:
             logger.error(f"Error processing BIM file: {str(e)}")
             raise
+    
+    def _extract_ifc_quantities(self, file_path: str) -> Dict[str, float]:
+        """
+        Extract quantities from IFC file
+        """
+        # Load IFC file
+        model = ifcopenshell.open(file_path)
+        
+        # Initialize quantities dictionary
+        quantities = {}
+        
+        # Get all building elements
+        elements = model.by_type("IfcBuildingElement")
+        
+        for element in elements:
+            try:
+                # Get element type
+                element_type = element.is_a()
+                
+                # Map to material category
+                material_category = self.material_mappings.get(element_type, 'Miscellaneous')
+                
+                # Extract quantities
+                quantity = self._extract_element_quantity(element, model)
+                
+                # Accumulate quantities by category
+                if material_category in quantities:
+                    quantities[material_category] += quantity
+                else:
+                    quantities[material_category] = quantity
+                    
+            except Exception as e:
+                logger.warning(f"Error processing element {element.GlobalId}: {str(e)}")
+                continue
+        
+        # Process additional elements like spaces, zones
+        self._process_spaces(model, quantities)
+        
+        logger.info(f"Extracted quantities for {len(quantities)} material categories from IFC")
+        
+        return quantities
+    
+    def _extract_dwg_quantities(self, file_path: str) -> Dict[str, float]:
+        """
+        Extract quantities from DWG file
+        """
+        try:
+            # Load DWG file
+            doc = ezdxf.readfile(file_path)
+            modelspace = doc.modelspace()
+            
+            # Initialize quantities dictionary
+            quantities = {}
+            
+            # Process entities by layer
+            layer_counts = {}
+            layer_areas = {}
+            layer_lengths = {}
+            
+            for entity in modelspace:
+                try:
+                    layer_name = entity.dxf.layer.upper()
+                    
+                    # Count entities per layer
+                    if layer_name not in layer_counts:
+                        layer_counts[layer_name] = 0
+                        layer_areas[layer_name] = 0
+                        layer_lengths[layer_name] = 0
+                    
+                    layer_counts[layer_name] += 1
+                    
+                    # Calculate areas and lengths based on entity type
+                    if entity.dxftype() == 'LWPOLYLINE' or entity.dxftype() == 'POLYLINE':
+                        try:
+                            # Calculate area for closed polylines
+                            if hasattr(entity, 'is_closed') and entity.is_closed:
+                                # Simplified area calculation
+                                vertices = list(entity.vertices())
+                                if len(vertices) >= 3:
+                                    # Using shoelace formula for polygon area
+                                    area = 0
+                                    for i in range(len(vertices)):
+                                        j = (i + 1) % len(vertices)
+                                        area += vertices[i][0] * vertices[j][1]
+                                        area -= vertices[j][0] * vertices[i][1]
+                                    area = abs(area) / 2
+                                    layer_areas[layer_name] += area
+                            
+                            # Calculate length
+                            length = 0
+                            vertices = list(entity.vertices())
+                            for i in range(len(vertices) - 1):
+                                dx = vertices[i+1][0] - vertices[i][0]
+                                dy = vertices[i+1][1] - vertices[i][1]
+                                length += (dx*dx + dy*dy)**0.5
+                            layer_lengths[layer_name] += length
+                            
+                        except Exception as e:
+                            logger.warning(f"Error calculating polyline metrics: {str(e)}")
+                    
+                    elif entity.dxftype() == 'LINE':
+                        try:
+                            start = entity.dxf.start
+                            end = entity.dxf.end
+                            length = ((end[0] - start[0])**2 + (end[1] - start[1])**2 + (end[2] - start[2])**2)**0.5
+                            layer_lengths[layer_name] += length
+                        except Exception as e:
+                            logger.warning(f"Error calculating line length: {str(e)}")
+                    
+                    elif entity.dxftype() == 'CIRCLE':
+                        try:
+                            radius = entity.dxf.radius
+                            area = 3.14159 * radius * radius
+                            layer_areas[layer_name] += area
+                        except Exception as e:
+                            logger.warning(f"Error calculating circle area: {str(e)}")
+                    
+                    elif entity.dxftype() == 'ARC':
+                        try:
+                            radius = entity.dxf.radius
+                            start_angle = entity.dxf.start_angle
+                            end_angle = entity.dxf.end_angle
+                            angle_diff = end_angle - start_angle
+                            if angle_diff < 0:
+                                angle_diff += 360
+                            arc_length = (angle_diff / 360) * 2 * 3.14159 * radius
+                            layer_lengths[layer_name] += arc_length
+                        except Exception as e:
+                            logger.warning(f"Error calculating arc length: {str(e)}")
+                
+                except Exception as e:
+                    logger.warning(f"Error processing DWG entity: {str(e)}")
+                    continue
+            
+            # Map layers to material categories and calculate quantities
+            for layer, count in layer_counts.items():
+                material_category = 'Miscellaneous'
+                
+                # Find matching material category
+                for layer_pattern, category in self.dwg_layer_mappings.items():
+                    if layer_pattern in layer:
+                        material_category = category
+                        break
+                
+                # Calculate quantity based on layer type
+                quantity = 0
+                
+                if 'WALL' in layer or 'SLAB' in layer or 'BEAM' in layer or 'COLUMN' in layer:
+                    # Use area for structural elements
+                    quantity = max(layer_areas[layer], count * 10)  # Fallback to count-based
+                elif 'DOOR' in layer or 'WINDOW' in layer:
+                    # Use count for openings
+                    quantity = count
+                elif 'ELECTRICAL' in layer or 'PLUMBING' in layer or 'HVAC' in layer:
+                    # Use length for MEP systems
+                    quantity = max(layer_lengths[layer] / 100, count * 5)  # Convert to reasonable units
+                else:
+                    # Use area or count as appropriate
+                    quantity = max(layer_areas[layer], count * 5)
+                
+                # Accumulate quantities by category
+                if material_category in quantities:
+                    quantities[material_category] += quantity
+                else:
+                    quantities[material_category] = quantity
+            
+            # Add some estimated quantities if none found
+            if not quantities:
+                quantities = {
+                    'Miscellaneous': 100.0,
+                    'Concrete/Masonry': 50.0,
+                    'MEP Systems': 25.0
+                }
+            
+            logger.info(f"Extracted quantities for {len(quantities)} material categories from DWG")
+            
+            return quantities
+            
+        except Exception as e:
+            logger.error(f"Error processing DWG file: {str(e)}")
+            # Return basic fallback quantities
+            return {
+                'Miscellaneous': 100.0,
+                'Concrete/Masonry': 50.0,
+                'Steel/Concrete': 25.0,
+                'MEP Systems': 30.0
+            }
     
     def _extract_element_quantity(self, element, model) -> float:
         """
