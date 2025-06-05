@@ -19,6 +19,12 @@ if 'db_manager' not in st.session_state:
     st.session_state.ml_predictor = MLPredictor()
     st.session_state.nbr_validator = NBRValidator()
     st.session_state.last_update = datetime.now()
+    
+    # Train ML models with historical data on first load
+    try:
+        st.session_state.ml_predictor.train_models(st.session_state.db_manager)
+    except Exception as e:
+        st.warning(f"ML models will use default predictions: {str(e)}")
 
 def main():
     st.set_page_config(
