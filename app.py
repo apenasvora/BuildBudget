@@ -256,8 +256,11 @@ def show_bim_upload():
                         st.session_state.ml_predictor.update_predictions(project_id)
                         
                         # Cleanup
-                        if temp_path and os.path.exists(temp_path):
-                            os.remove(temp_path)
+                        if temp_path:
+                            try:
+                                os.remove(temp_path)
+                            except OSError:
+                                pass
                         
                         st.success(f"✅ Project '{project_name}' created successfully!")
                         st.info(f"Extracted {len(quantities)} material categories")
@@ -276,8 +279,11 @@ def show_bim_upload():
                         
                     except Exception as e:
                         st.error(f"Error processing BIM model: {str(e)}")
-                        if os.path.exists(temp_path):
-                            os.remove(temp_path)
+                        if temp_path:
+                            try:
+                                os.remove(temp_path)
+                            except OSError:
+                                pass
                     
                     finally:
                         progress_bar.empty()
