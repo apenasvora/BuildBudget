@@ -136,10 +136,11 @@ def show_dashboard():
                 title="Cost Accumulation Timeline",
                 xaxis_title="Date",
                 yaxis_title="Cost (R$)",
-                hovermode='x unified'
+                hovermode='x unified',
+                height=400
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="cost_timeline")
         
         # Material Deviation Heat Map
         st.subheader("🔥 Material Cost Deviations")
@@ -157,7 +158,8 @@ def show_dashboard():
                     color_continuous_scale='RdYlBu_r',
                     title="Material Cost Deviations (%)"
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True, key="deviation_chart")
         
         with col2:
             # Top 5 Critical Materials
@@ -169,9 +171,9 @@ def show_dashboard():
             else:
                 st.success("No critical deviations detected")
     
-    # Auto-refresh
-    time.sleep(2)
-    st.rerun()
+    # Auto-refresh with user control
+    if st.button("🔄 Refresh Dashboard"):
+        st.rerun()
 
 def show_bim_upload():
     st.header("📤 BIM Model Upload & Processing")
@@ -198,6 +200,7 @@ def show_bim_upload():
                     progress_bar = st.progress(0)
                     status_text = st.empty()
                     
+                    temp_path = None
                     try:
                         # Step 1: Save uploaded file
                         status_text.text("Saving BIM file...")
@@ -253,15 +256,21 @@ def show_bim_upload():
                         st.session_state.ml_predictor.update_predictions(project_id)
                         
                         # Cleanup
-                        os.remove(temp_path)
+                        if temp_path and os.path.exists(temp_path):
+                            os.remove(temp_path)
                         
                         st.success(f"✅ Project '{project_name}' created successfully!")
                         st.info(f"Extracted {len(quantities)} material categories")
                         
                         # Show extracted quantities
                         st.subheader("Extracted Quantities")
-                        df_quantities = pd.DataFrame(list(quantities.items()), columns=['Material', 'Quantity'])
-                        st.dataframe(df_quantities, use_container_width=True)
+                        if quantities:
+                            df_quantities = pd.DataFrame([
+                                {'Material': k, 'Quantity': v} for k, v in quantities.items()
+                            ])
+                            st.dataframe(df_quantities, use_container_width=True)
+                        else:
+                            st.warning("No quantities extracted from the BIM model")
                         
                         st.session_state.current_project_id = project_id
                         
@@ -334,8 +343,11 @@ def show_cost_prediction():
                 title="Predicted Costs by Material Category",
                 labels={'predicted_cost': 'Cost (R$)', 'material_category': 'Material'}
             )
-            fig.update_xaxis(tickangle=45)
-            st.plotly_chart(fig, use_container_width=True)
+            fig.update_layout(
+                xaxis={'tickangle': 45},
+                height=400
+            )
+            st.plotly_chart(fig, use_container_width=True, key="prediction_chart")
             
             # Predictions table
             st.dataframe(
