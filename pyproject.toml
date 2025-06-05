@@ -1,0 +1,15 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "ifcopenshell>=0.8.2",
+    "joblib>=1.5.1",
+    "numpy>=2.2.6",
+    "pandas>=2.3.0",
+    "plotly>=6.1.2",
+    "scikit-learn>=1.6.1",
+    "streamlit>=1.45.1",
+    "xgboost>=3.0.2",
+]
