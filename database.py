@@ -22,24 +22,22 @@ class DatabaseManager:
         """
         Get a database connection with proper configuration
         """
-        # Ensure directory exists and is writable
-        db_dir = os.path.dirname(self.db_path)
-        if db_dir and not os.path.exists(db_dir):
-            os.makedirs(db_dir, mode=0o777, exist_ok=True)
-        
-        # Set proper permissions on database file if it exists
-        if os.path.exists(self.db_path):
+        # Create a new database file with proper permissions
+        if not os.path.exists(self.db_path):
+            # Create empty file with write permissions
+            open(self.db_path, 'a').close()
             os.chmod(self.db_path, 0o666)
         
         conn = sqlite3.connect(
             self.db_path, 
-            timeout=30.0, 
-            isolation_level=None,
+            timeout=60.0,
             check_same_thread=False
         )
-        conn.execute('PRAGMA journal_mode=WAL')
-        conn.execute('PRAGMA synchronous=NORMAL')
-        conn.execute('PRAGMA temp_store=memory')
+        
+        # Set SQLite to be more permissive
+        conn.execute('PRAGMA journal_mode=DELETE')
+        conn.execute('PRAGMA synchronous=OFF')
+        conn.execute('PRAGMA locking_mode=NORMAL')
         return conn
     
     def init_database(self):
