@@ -1,0 +1,27 @@
+graph LR
+    %% Backend Stack %%
+    subgraph Backend
+        SB1[Simple Backend]
+        SB2[Node / Next.js]
+        SB3[shadcn + Middleware]
+    end
+    SB1 --> SB2 --> SB3
+
+    %% Application Layer %%
+    SB3 --> App[App]
+    App --> AI[AI Integrate]
+
+    %% API Testing & UI %%
+    SB3 -. API Testing .-> Postman(Postman)
+    Postman --> UI[Visuals + React Framework]
+
+    %% AI Service & Distribution %%
+    UI --> SunoAI[SunoAI + API]
+    SunoAI --> YouTube[YouTube Channel]
+
+    %% State Management %%
+    subgraph "Superposition State"
+        ID1[ID?]
+        ID1 --> ID2[ID! WA]
+        ID2 --> Hash[Hash "8a7c5..." \nHISM]
+    end
